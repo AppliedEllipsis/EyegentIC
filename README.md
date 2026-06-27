@@ -94,14 +94,22 @@ fires.
 
 ## Build
 
-You need Rust with a `wasm32-wasi` target.
+You need Rust with a `wasm32-wasi` (or `wasm32-wasip1`) target.
 
 ```bash
-rustup target add wasm32-wasi   # or wasm32-wasip1 on newer toolchains
-./build.sh                      # builds target/wasm32-wasi/release/eyegentic.wasm
+rustup target add wasm32-wasip1   # or wasm32-wasi on older toolchains
+./build.sh                        # builds target/<target>/release/eyegentic.wasm
 ```
 
 `build.sh` auto-detects which `wasm32-wasi*` variant your toolchain has.
+
+> **This is a `bin` crate, not a `cdylib`.** zellij's `register_plugin!` macro
+> emits a `fn main()`, so the plugin must compile to a WASI *command* module
+> (entry point `_start`) — the entry point zellij calls to initialize the
+> plugin before `load`. The source lives in `src/main.rs` and `Cargo.toml`
+> has **no** `[lib]` section. If you make it a `cdylib`, the `.wasm` builds
+> fine but zellij fails to instantiate it with *"could not find exported
+> function"*.
 
 ## Try it
 
@@ -231,7 +239,7 @@ missing.
 
 ```
 src/
-  lib.rs        ZellijPlugin impl, event dispatch, mouse + pipe routing
+  main.rs       ZellijPlugin impl, event dispatch, mouse + pipe routing (bin crate — emits _start)
   config.rs     load-time config parsing
   settings.rs   persisted, runtime-toggleable settings (serde)
   state.rs      in-memory state: tracked panes, piped statuses, flash, sync

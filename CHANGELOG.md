@@ -7,7 +7,15 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [0.1.0] — 2025-06-27
 
-First public release. A zellij WASM plugin that keeps an eye on your
+First public release.
+
+### Fixed
+- Build as a WASI **command (bin) crate** (`src/main.rs`, no `[lib]`), not a
+  `cdylib`. The `register_plugin!` macro emits `fn main()`, so the toolchain
+  must produce a `_start` entry point for zellij to instantiate the plugin.
+  A `cdylib` has no `_start` and fails to load with *"could not find exported
+  function"*.
+ A zellij WASM plugin that keeps an eye on your
 coding-agent panes and shows, at a glance, which agent is **working**,
 **ready**, **needs input**, or **errored** — *the eye, see, in agentIC.*
 
