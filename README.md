@@ -6,6 +6,10 @@
 
 **Keep an eye on your coding agents — pane status at a glance.** 👁️
 
+> ⚠️ **Status: unstable / paused.** This project is currently in an unstable
+> state and active development is paused for now. Things may be broken or
+> incomplete — use at your own risk.
+
 A [zellij](https://zellij.dev) plugin that shows your coding-agent panes'
 status **at a glance** — *the eye, see,* in agent**ic**.
 
