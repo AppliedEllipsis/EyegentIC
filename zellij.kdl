@@ -1,0 +1,20 @@
+// Dev layout for eyegentic. Run `./build.sh` first (which copies the .wasm
+// to ./eyegentic.wasm), then from the eyegentic/ folder:
+//
+//   zellij -l zellij.kdl
+//
+// It loads the plugin as a one-line, borderless status bar at the top, and
+// gives you a normal shell pane below to launch `pi` in.
+
+layout {
+    pane size=1 borderless=true {
+        plugin location="file:eyegentic.wasm" {
+            poll_interval "1.0"
+            status_bar "true"
+            rename_tabs "true"
+            rename_panes "true"
+            pane_tint "false"
+        }
+    }
+    pane
+}
