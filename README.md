@@ -149,6 +149,16 @@ layout {
 > **Windows note:** use `file:D:/path/eyegentic.wasm` (no slash after `file:`).
 > The `file:/D:/...` form the docs show fails with OS error 123 on Windows.
 
+To download the release artifact manually (and pin it locally):
+
+```bash
+curl -L -o eyegentic.wasm \
+  https://github.com/AppliedEllipsis/EyegentIC/releases/latest/download/eyegentic.wasm
+```
+
+Each release lists the artifact's `sha256` so you can verify the download.
+See [CHANGELOG.md](CHANGELOG.md) for what changed in each version.
+
 ## Configuration
 
 All keys are optional (defaults shown):
