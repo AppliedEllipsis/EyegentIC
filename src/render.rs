@@ -1,17 +1,39 @@
 //! The status-bar renderer.
 //!
-//! `render_bar` returns a single line (with ANSI truecolor escapes) that
-//! zellij prints into the plugin's pane. The bar lists every tracked agent
-//! as `❗ name · ⏳ name · ✅ name`, sorted by attention, plus a summary.
+//! `render_bar` builds a single truecolor line that zellij prints into the
+//! plugin's pane. It lists every tracked agent as `❗ name · ⏳ name · ✅ name`,
+//! sorted by attention, with optional elapsed-time suffixes and a "needs
+//! input" flash. It also records clickable regions so a click can focus a
+//! waiting agent's pane or switch to its tab, plus a clickable settings menu.
 
-use crate::state::{PaneRecord, State};
-use crate::status::Status;
+use std::fmt::Write;
 
-/// Build the one-line status bar.
-pub fn render_bar(state: &State, _rows: usize, cols: usize) -> String {
+use zellij_tile::prelude::InputMode;
+
+use crate::state::{MenuAction, State, ViewMode};
+use crate::status::{tool_icon, Status};
+
+type Color = (u8, u8, u8);
+
+const RESET: &str = "\x1b[0m";
+const BOLD: &str = "\x1b[1m";
+const DIM: &str = "\x1b[2m";
+
+const BRAND: Color = (90, 200, 220);
+const SEP: Color = (96, 96, 120);
+const SUM: Color = (120, 120, 135);
+const FLASH_FG: Color = (255, 255, 80);
+const FLASH_BG: Color = (80, 80, 30);
+
+/// Build the one-line status bar (and populate `state.click_regions`).
+pub fn render_bar(state: &mut State, _rows: usize, cols: usize) -> String {
+    state.click_regions.clear();
+    state.menu_click_regions.clear();
+    state.prefix_click_region = None;
+
     if state.permissions_denied {
         return color(
-            "eyegentic  permissions denied — grant ReadApplicationState, ReadPaneContents, ChangeApplicationState",
+            "eyegentic  permissions denied — grant ReadApplicationState, ReadPaneContents, ChangeApplicationState, RunCommands, ReadCliPipes, MessageAndLaunchOtherPlugins",
             (230, 70, 70),
         );
     }
@@ -19,7 +41,54 @@ pub fn render_bar(state: &State, _rows: usize, cols: usize) -> String {
         return color("eyegentic  waiting for permissions…", (245, 166, 35));
     }
 
-    let mut agents: Vec<&PaneRecord> = state.tracked.values().collect();
+    let mut buf = String::with_capacity(cols * 6);
+    // Keep the bar on one line, no cursor/wrap artifacts.
+    let _ = write!(buf, "\x1b[H\x1b[?7l\x1b[?25l");
+
+    // Prefix: " eyegentic (session) " + optional mode pill.
+    let mut col = 0usize;
+    let session = state
+        .zellij_session_name
+        .as_deref()
+        .map(|n| format!(" ({n})"))
+        .unwrap_or_default();
+    let prefix_text = format!(" eyegentic{session} ");
+    let _ = write!(buf, "{}{}{BOLD}{prefix_text}{RESET}", fg(BRAND), BOLD);
+    col += char_width(&prefix_text);
+    state.prefix_click_region = Some((0, col));
+
+    // Mode pill (only in Normal view, to keep it unobtrusive).
+    if state.view_mode == ViewMode::Normal {
+        let (mc, mt) = mode_style(state.input_mode);
+        let pill = format!(" {mt} ");
+        let _ = write!(buf, "{}{}{BOLD}{pill}{RESET}", bg(mc), fg((20, 20, 30)));
+        col += char_width(&pill);
+    }
+
+    if col + 2 <= cols {
+        buf.push_str(&fg(SEP));
+    }
+
+    match state.view_mode {
+        ViewMode::Normal => render_agents(state, &mut buf, &mut col, cols),
+        ViewMode::Settings => render_settings_menu(state, &mut buf, &mut col, cols),
+    }
+
+    // Pad to the right edge with the default color so the bar fills the row.
+    let visible = visible_width(&buf);
+    if visible < cols {
+        let _ = write!(buf, "{:width$}", "", width = cols - visible);
+    }
+    buf.push_str(RESET);
+    buf
+}
+
+fn render_agents(state: &mut State, buf: &mut String, col: &mut usize, cols: usize) {
+    let now = crate::state::unix_now();
+    let threshold = state.config.elapsed_threshold;
+    let show_elapsed = state.settings.elapsed_time;
+
+    let mut agents: Vec<&crate::state::PaneRecord> = state.tracked.values().collect();
     agents.sort_by(|a, b| {
         b.status
             .attention_rank()
@@ -27,29 +96,38 @@ pub fn render_bar(state: &State, _rows: usize, cols: usize) -> String {
             .then_with(|| a.short_name.cmp(&b.short_name))
     });
 
-    let mut out = String::new();
-    out.push_str(&bold_color("eyegentic", (90, 200, 220)));
-    out.push_str("  ");
-
     if agents.is_empty() {
-        out.push_str(&color("no agents detected", (120, 120, 135)));
-        return truncate(out, cols);
+        let _ = write!(buf, "  {}", color("no agents detected", SUM));
+        *col += 2 + char_width("no agents detected");
+        return;
     }
 
-    let mut parts: Vec<String> = Vec::new();
+    let mut first = true;
     for a in &agents {
-        let (r, g, b) = a.status.color_rgb();
-        parts.push(format!(
-            "\x1b[38;2;{};{};{}m{} {}\x1b[0m",
-            r,
-            g,
-            b,
-            a.status.icon(),
-            a.short_name
-        ));
+        let seg = render_segment(a, now, threshold, show_elapsed, state);
+        let w = visible_width(&seg);
+        if *col + w + (if first { 0 } else { 3 }) > cols {
+            break;
+        }
+        if !first {
+            let _ = write!(buf, " {}·{} ", fg(SEP), RESET);
+            *col += 3;
+        }
+        let region_start = *col;
+        buf.push_str(&seg);
+        *col += w;
+        state.click_regions.push(crate::state::ClickRegion {
+            start_col: region_start,
+            end_col: *col,
+            tab_position: a.tab_position,
+            pane_id: a.pane_id,
+            is_agent: true,
+            is_waiting: a.status == Status::NeedsInput,
+        });
+        first = false;
     }
-    out.push_str(&parts.join(" \x1b[90m·\x1b[0m "));
 
+    // Summary.
     let needs_input = agents
         .iter()
         .filter(|a| a.status == Status::NeedsInput)
@@ -59,7 +137,6 @@ pub fn render_bar(state: &State, _rows: usize, cols: usize) -> String {
         .iter()
         .filter(|a| a.status == Status::Working)
         .count();
-
     let plural = if agents.len() == 1 { "" } else { "s" };
     let summary = format!(
         "{} agent{} · {} working · {} need input · {} error",
@@ -69,52 +146,177 @@ pub fn render_bar(state: &State, _rows: usize, cols: usize) -> String {
         needs_input,
         errors
     );
-    out.push_str("   ");
-    out.push_str(&color(&summary, (120, 120, 135)));
-
-    truncate(out, cols)
-}
-
-fn color(s: &str, (r, g, b): (u8, u8, u8)) -> String {
-    format!("\x1b[38;2;{};{};{}m{}\x1b[0m", r, g, b, s)
-}
-
-fn bold_color(s: &str, (r, g, b): (u8, u8, u8)) -> String {
-    format!("\x1b[1m\x1b[38;2;{};{};{}m{}\x1b[0m", r, g, b, s)
-}
-
-/// Truncate a string to `cols` visible columns, accounting for the fact that
-/// the string contains ANSI escapes (which don't consume columns).
-fn truncate(s: String, cols: usize) -> String {
-    if cols == 0 {
-        return s;
+    let summary_w = char_width(&summary) + 3;
+    if *col + summary_w <= cols {
+        let _ = write!(buf, "   {}", color(&summary, SUM));
+        *col += summary_w;
     }
-    let mut visible = 0usize;
-    let mut out = String::with_capacity(s.len());
+}
+
+fn render_segment(
+    a: &crate::state::PaneRecord,
+    now: u64,
+    threshold: u64,
+    show_elapsed: bool,
+    state: &State,
+) -> String {
+    let flashing = state.is_flash_bright(a.pane_id);
+    let icon = if a.status == Status::Working {
+        a.tool.as_deref().map(tool_icon).unwrap_or(a.status.icon())
+    } else {
+        a.status.icon()
+    };
+
+    let mut s = String::new();
+    if flashing {
+        let _ = write!(s, "{}{}", bg(FLASH_BG), fg(FLASH_FG));
+    } else {
+        let (r, g, b) = a.status.color_rgb();
+        let _ = write!(s, "{}", fg((r, g, b)));
+    }
+    let _ = write!(s, "{icon} {}", a.short_name);
+
+    // Elapsed-time suffix.
+    if show_elapsed && a.status != Status::Idle && a.status != Status::Unknown {
+        let elapsed = now.saturating_sub(a.last_event_ts);
+        if elapsed >= threshold {
+            let _ = write!(s, " {}", dim(&format_elapsed(elapsed)));
+        }
+    }
+    if flashing {
+        s.push_str(RESET);
+    }
+    s
+}
+
+fn render_settings_menu(state: &mut State, buf: &mut String, col: &mut usize, cols: usize) {
+    let _ = write!(buf, "  ");
+    *col += 2;
+
+    add_toggle(state, buf, col, "bar", state.settings.status_bar, MenuAction::ToggleStatusBar);
+    add_toggle(state, buf, col, "tabs", state.settings.rename_tabs, MenuAction::ToggleRenameTabs);
+    add_toggle(state, buf, col, "panes", state.settings.rename_panes, MenuAction::ToggleRenamePanes);
+    add_toggle(state, buf, col, "tint", state.settings.pane_tint, MenuAction::TogglePaneTint);
+    add_toggle(
+        state, buf, col, "elapsed", state.settings.elapsed_time, MenuAction::ToggleElapsedTime,
+    );
+    // Flash is a 3-state cycle.
+    {
+        let label = format!("flash:{}", state.settings.flash.label());
+        let text = format!("● {label}");
+        let start = *col;
+        let _ = write!(buf, "{}{}  ", fg((255, 200, 60)), text);
+        *col += char_width(&text) + 2;
+        state.menu_click_regions.push(crate::state::MenuClickRegion {
+            start_col: start,
+            end_col: *col,
+            action: MenuAction::CycleFlash,
+        });
+    }
+    // Close button.
+    {
+        let start = *col;
+        let _ = write!(buf, "{}×", fg((255, 60, 60)));
+        *col += 1;
+        state.menu_click_regions.push(crate::state::MenuClickRegion {
+            start_col: start,
+            end_col: *col,
+            action: MenuAction::CloseMenu,
+        });
+    }
+    let _ = cols;
+}
+
+fn add_toggle(
+    state: &mut State,
+    buf: &mut String,
+    col: &mut usize,
+    label: &str,
+    on: bool,
+    action: MenuAction,
+) {
+    let mark = if on { "●" } else { "○" };
+    let mc = if on { (80, 200, 120) } else { (100, 100, 110) };
+    let text = format!("{mark} {label}");
+    let start = *col;
+    let _ = write!(buf, "{}{}  ", fg(mc), text);
+    *col += char_width(&text) + 2;
+    state.menu_click_regions.push(crate::state::MenuClickRegion {
+        start_col: start,
+        end_col: *col,
+        action,
+    });
+}
+
+// ----- helpers -------------------------------------------------------------
+
+fn mode_style(mode: InputMode) -> (Color, &'static str) {
+    match mode {
+        InputMode::Normal => ((80, 200, 120), "NORMAL"),
+        InputMode::Locked => ((255, 80, 80), "LOCKED"),
+        InputMode::Pane => ((80, 180, 255), "PANE"),
+        InputMode::Tab => ((180, 140, 255), "TAB"),
+        InputMode::Resize => ((255, 170, 50), "RESIZE"),
+        InputMode::Move => ((255, 170, 50), "MOVE"),
+        InputMode::Scroll => ((200, 200, 100), "SCROLL"),
+        InputMode::EnterSearch => ((200, 200, 100), "SEARCH"),
+        InputMode::Search => ((200, 200, 100), "SEARCH"),
+        InputMode::RenameTab => ((200, 200, 100), "RENAME"),
+        InputMode::RenamePane => ((200, 200, 100), "RENAME"),
+        InputMode::Session => ((180, 140, 255), "SESSION"),
+        InputMode::Prompt => ((80, 200, 120), "PROMPT"),
+        InputMode::Tmux => ((80, 200, 120), "TMUX"),
+    }
+}
+
+fn format_elapsed(secs: u64) -> String {
+    if secs < 60 {
+        format!("{secs}s")
+    } else if secs < 3600 {
+        format!("{}m", secs / 60)
+    } else {
+        format!("{}h", secs / 3600)
+    }
+}
+
+fn fg((r, g, b): Color) -> String {
+    format!("\x1b[38;2;{r};{g};{b}m")
+}
+fn bg((r, g, b): Color) -> String {
+    format!("\x1b[48;2;{r};{g};{b}m")
+}
+fn color(s: &str, c: Color) -> String {
+    format!("{}{s}{RESET}", fg(c))
+}
+fn dim(s: &str) -> String {
+    format!("{DIM}{s}{RESET}")
+}
+
+fn char_width(s: &str) -> usize {
+    s.chars().count()
+}
+
+/// Visible width of a string that may contain ANSI escapes.
+fn visible_width(s: &str) -> usize {
+    let mut n = 0usize;
     let mut chars = s.chars().peekable();
     while let Some(c) = chars.next() {
         if c == '\x1b' {
-            // Copy the whole escape sequence through.
-            out.push(c);
             if matches!(chars.peek(), Some('[')) {
-                out.push(chars.next().unwrap());
+                chars.next();
                 for d in chars.by_ref() {
-                    out.push(d);
                     if ('@'..='~').contains(&d) {
                         break;
                     }
                 }
-            } else if let Some(d) = chars.next() {
-                out.push(d);
+            } else {
+                chars.next();
             }
             continue;
         }
-        if visible + 1 > cols {
-            // Drop the rest; the bar is one line.
-            break;
+        if !c.is_control() {
+            n += 1;
         }
-        out.push(c);
-        visible += 1;
     }
-    out
+    n
 }

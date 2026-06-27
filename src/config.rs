@@ -1,6 +1,12 @@
 //! Plugin configuration, parsed from the key/value map zellij hands to `load`.
+//!
+//! These are *load-time* defaults. The toggleable subset is mirrored by the
+//! live, persistable [`crate::settings::Settings`], which is seeded from this
+//! config on first load and then driven by the in-bar settings menu.
 
 use std::collections::BTreeMap;
+
+use crate::settings::FlashMode;
 
 /// All knobs the user can set through the plugin's layout configuration.
 #[derive(Debug, Clone)]
@@ -22,6 +28,22 @@ pub struct Config {
     /// Extra substrings (case-insensitive) that mark a pane's command as an
     /// agent, beyond the built-in detector list. Comma-separated.
     pub extra_agent_patterns: Vec<String>,
+
+    // --- load-time-only knobs (not toggled from the bar) -------------------
+
+    /// Show "45s / 2m" next to an agent that has sat in the same state for at
+    /// least this many seconds (helps spot stuck agents).
+    pub elapsed_threshold: u64,
+    /// Demote a *piped* Working status to Idle (letting inference take over)
+    /// after this many seconds without a fresh piped event.
+    pub working_stale_secs: u64,
+    /// How the bar flashes when an agent starts needing input.
+    pub flash: FlashMode,
+    /// Show elapsed-time annotations in the bar.
+    pub elapsed_time: bool,
+    /// On first load (after permissions), auto-install a pi extension that
+    /// pipes agent state into eyegentic. Idempotent + version-tagged.
+    pub auto_install_hook: bool,
 }
 
 impl Default for Config {
@@ -34,6 +56,11 @@ impl Default for Config {
             rename_panes: true,
             scrollback_lines: 14,
             extra_agent_patterns: Vec::new(),
+            elapsed_threshold: 30,
+            working_stale_secs: 600,
+            flash: FlashMode::Brief,
+            elapsed_time: true,
+            auto_install_hook: true,
         }
     }
 }
@@ -75,6 +102,29 @@ impl Config {
                 .map(|s| s.trim().to_lowercase())
                 .filter(|s| !s.is_empty())
                 .collect();
+        }
+        if let Some(v) = c.get("elapsed_threshold") {
+            if let Ok(n) = v.parse::<u64>() {
+                cfg.elapsed_threshold = n;
+            }
+        }
+        if let Some(v) = c.get("working_stale_secs") {
+            if let Ok(n) = v.parse::<u64>() {
+                cfg.working_stale_secs = n;
+            }
+        }
+        if let Some(v) = c.get("flash") {
+            cfg.flash = match v.trim().to_lowercase().as_str() {
+                "off" | "none" | "false" => FlashMode::Off,
+                "persist" | "persistent" => FlashMode::Persist,
+                _ => FlashMode::Brief,
+            };
+        }
+        if let Some(v) = c.get("elapsed_time") {
+            cfg.elapsed_time = parse_bool(v);
+        }
+        if let Some(v) = c.get("auto_install_hook") {
+            cfg.auto_install_hook = parse_bool(v);
         }
 
         cfg

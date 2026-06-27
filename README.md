@@ -14,10 +14,24 @@ zellij session and tells you, in one line, which agent is **working**, which is
 **ready**, and which is **blocked waiting for you** — so you always know where
 your attention is needed.
 
-It is inspired by the at-a-glance UX of [herdr](https://herdr.dev), but lives
-*inside* zellij as a WASM plugin and is agent-agnostic: it ships with a
-detector for the [pi](https://github.com/earendil-works/pi-coding-agent)
-coding agent and is built to add more.
+### Why the name? 👁️
+
+**`eyegentic`** is a portmanteau that reads three ways at once:
+
+- **eye** + **agent** + **-ic** — an *eye* on your coding *agent*s, in the
+  *agentic* era.
+- Said aloud it's *"eye-see"* → **"I see"** — the plugin lets you *see*
+  what every agent is doing.
+- The trailing **IC** of "agent**IC**" is literally **"I C"** = **"I see"**.
+
+So the tagline **"The Eye, See, in agentIC"** means: *the eye that sees,
+embedded in the agentic age.*
+
+It is inspired by the at-a-glance UX of [herdr](https://herdr.dev) and
+[zellaude](https://github.com/ishefi/zellaude), but lives *inside* zellij as a
+WASM plugin and is agent-agnostic: it ships with a detector for the
+[pi](https://github.com/earendil-works/pi-coding-agent) coding agent and is
+built to add more.
 
 ## What it shows
 
@@ -34,11 +48,30 @@ Each tracked agent pane is classified into one of:
 
 These appear as, in priority order:
 
-1. **a status bar** in the plugin pane — `eyegentic  ❗ web · ⏳ api · ✅ docs   3 agents · 1 working · 1 need input · 0 error`
+1. **a status bar** in the plugin pane — `eyegentic  ❗ web · ⏳ api · ✅ docs   3 agents · 1 working · 1 need input · 0 error` — with optional **elapsed-time** suffixes (`⏳ api 45s`) to spot stuck agents and a **yellow flash** when an agent starts needing input.
 2. **icons prefixed onto tab names** — each tab is prefixed with the icon of
    its most attention-worthy agent (`❗ api`).
 3. **icons prefixed onto pane frame titles**.
 4. *(experimental)* **pane default-color tint** by state.
+
+The bar is also **clickable**: click an agent to focus its pane (if it's
+waiting on you) or switch to its tab. Click the **eyegentic** prefix to open
+the in-bar **settings menu** and toggle indicators live. If you load eyegentic
+in multiple tabs, all instances **sync** so every tab shows the same view.
+
+#### Per-tool icons
+
+When a hook pipes a `tool` name alongside `working`, the bar swaps ⏳ for a
+per-tool glyph so you can see *what* the agent is doing:
+
+| tool                    | icon |
+|-------------------------|------|
+| bash / shell / exec      | ⚡   |
+| read / glob / grep / search | ◉   |
+| edit / write / patch     | ✎   |
+| web / fetch / http       | ◈   |
+| task / subagent / spawn  | ⊜   |
+| anything else            | ⚙   |
 
 ## How it detects state
 
@@ -84,8 +117,19 @@ works and finishes.
 
 ## Install permanently
 
-Copy the built `.wasm` somewhere stable, then add the plugin to your zellij
-layout (e.g. `~/.config/zellij/layouts/default.kdl`):
+The easiest way is to point your layout at a [release](https://github.com/AppliedEllipsis/EyegentIC/releases)
+artifact — no Rust toolchain needed:
+
+```kdl
+default_tab_template {
+    pane size=1 borderless=true {
+        plugin location="https://github.com/AppliedEllipsis/EyegentIC/releases/latest/download/eyegentic.wasm"
+    }
+    children
+}
+```
+
+Or build from source and load the local file:
 
 ```kdl
 layout {
@@ -102,6 +146,9 @@ layout {
 }
 ```
 
+> **Windows note:** use `file:D:/path/eyegentic.wasm` (no slash after `file:`).
+> The `file:/D:/...` form the docs show fails with OS error 123 on Windows.
+
 ## Configuration
 
 All keys are optional (defaults shown):
@@ -115,39 +162,57 @@ All keys are optional (defaults shown):
 | `pane_tint`          | `false` | tint each agent pane's default colors by state     |
 | `scrollback_lines`   | `14`    | trailing viewport lines to inspect                 |
 | `extra_agent_patterns` | `""`  | comma-separated extra command substrings to treat as agents |
+| `elapsed_threshold`  | `30`    | seconds before an elapsed-time suffix appears      |
+| `working_stale_secs` | `600`   | demote a stale piped `working` to idle after this  |
+| `flash`              | `brief` | needs-input flash: `off` / `brief` / `persist`      |
+| `elapsed_time`       | `true`  | show elapsed-time suffixes in the bar              |
+| `auto_install_hook`  | `true`  | auto-install the pi hook extension on first load    |
+
+The toggleable subset (`status_bar`, `rename_tabs`, `rename_panes`,
+`pane_tint`, `elapsed_time`, `flash`) is also live-editable from the in-bar
+**settings menu** (click the **eyegentic** prefix) and persisted to
+`~/.config/zellij/plugins/eyegentic.json`, synced across all plugin instances.
 
 > **About `pane_tint` / "border colors":** zellij's plugin API exposes
 > `set_pane_color` (a pane's *default* fg/bg) but no border-only color, so
 > this tints the whole pane and is off by default. The visible indicators are
 > the status bar and the icon prefixes.
 
-## Wiring pi to pipe explicit status (optional, most precise)
+## Auto-installed pi hook (zero setup)
 
-Add a small pi hook that pipes state to eyegentic. In `~/.pi/agent/hooks.js`
-(or an extension), emit on the relevant events:
+On first load — after you grant permissions — eyegentic **automatically**
+writes a small TypeScript extension to
+`~/.pi/agent/extensions/eyegentic/index.ts`. pi auto-discovers extensions
+there, so the next time you start `pi` in a zellij pane it will begin piping
+precise status (`working` / `ready` / `idle` / `error`, plus the current tool
+name) into eyegentic. No manual wiring required.
 
-```js
-export default (pi) => {
-  const paneId = process.env.ZELLIJ_PANE_ID || "0";
-  const send = (status) =>
-    pi.run?.(`zellij pipe --name eyegentic -- '{"pane_id":${paneId},"status":"${status}"}'`)
-        ?? undefined;
-  pi.on("agent_start", () => send("working"));
-  pi.on("agent_reply", () => send("ready"));
-  pi.on("tool_call", () => send("working"));
-};
-```
+The install is **idempotent** (a version tag skips re-writing when current)
+and **backs up** an older file to `index.ts.bak` before overwriting. Removing
+the file is always safe — eyegentic falls back to scrollback/title inference.
 
-(Adjust the hook API to your pi version; the key idea is
-`zellij pipe --name eyegentic -- '<json>'`.)
+- **Disable it:** set `auto_install_hook "false"` in the plugin config.
+- **Uninstall the hook:** `rm -rf ~/.pi/agent/extensions/eyegentic`.
+- **What it does:** on `agent_start`/`tool_call`/`tool_execution_end` it pipes
+  `working` (+ tool name); on `agent_end` it pipes `ready`; on a tool error it
+  pipes `error`; on `session_start`/`session_shutdown` it pipes `idle`. It no-ops
+  when `pi` isn't running inside zellij.
+
+> The hook calls `zellij pipe --name eyegentic -- '<json>'` over the CLI, so
+> it needs the `ReadCliPipes` permission (requested automatically). The JSON
+> is `{"pane_id":N,"status":"...","tool":"...","ts_ms":N}`; `ts_ms` lets
+> eyegentic drop out-of-order events from parallel hook subprocesses.
 
 ## Permissions
 
 On first load, eyegentic requests:
 
-- `ReadApplicationState` — observe tabs/panes
+- `ReadApplicationState` — observe tabs/panes and the input mode
 - `ReadPaneContents` — read pane viewports for scrollback inference
 - `ChangeApplicationState` — rename tabs/panes and tint colors
+- `RunCommands` — load/save the settings file and auto-install the hook
+- `ReadCliPipes` — receive `zellij pipe --name eyegentic` from the hook
+- `MessageAndLaunchOtherPlugins` — sync state across plugin instances
 
 Grant them when zellij prompts. If denied, the status bar explains what's
 missing.
@@ -156,16 +221,20 @@ missing.
 
 ```
 src/
-  lib.rs        ZellijPlugin impl, event dispatch, register_plugin!
-  config.rs     configuration parsing
-  state.rs      in-memory state (tracked panes, originals, piped statuses)
-  status.rs      Status enum + icons/colors/attention ranking
+  lib.rs        ZellijPlugin impl, event dispatch, mouse + pipe routing
+  config.rs     load-time config parsing
+  settings.rs   persisted, runtime-toggleable settings (serde)
+  state.rs      in-memory state: tracked panes, piped statuses, flash, sync
+  status.rs      Status enum + icons/colors/attention ranking + per-tool icons
   agent/
     mod.rs       AgentDetector trait + shared title/scrollback heuristics
     pi.rs        pi detector (command match + classify)
   detect.rs      walk the manifest, classify each agent pane
   indicators.rs  apply tab/pane rename + pane tint
-  render.rs      the status bar
+  render.rs      the status bar (flash, elapsed, click regions, settings menu)
+  installer.rs   auto-install the pi hook extension
+scripts/
+  eyegentic-hook.ts  the auto-installed pi extension (piped status source)
 ```
 
 To support another agent, implement `AgentDetector` in `src/agent/` and add it

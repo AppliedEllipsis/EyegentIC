@@ -14,13 +14,13 @@ pub fn apply(state: &mut State) {
         return;
     }
 
-    if state.config.pane_tint {
+    if state.settings.pane_tint {
         tint_panes(state);
     }
-    if state.config.rename_tabs {
+    if state.settings.rename_tabs {
         rename_tabs(state);
     }
-    if state.config.rename_panes {
+    if state.settings.rename_panes {
         rename_panes(state);
     }
 }

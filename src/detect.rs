@@ -20,6 +20,7 @@ pub fn detect_all(state: &mut State) {
     let scrollback_lines = state.config.scrollback_lines;
 
     let mut next: BTreeMap<u32, PaneRecord> = BTreeMap::new();
+    let now = crate::state::unix_now();
 
     for (tab_position, panes) in &manifest.panes {
         for info in panes {
@@ -43,8 +44,16 @@ pub fn detect_all(state: &mut State) {
             }
 
             // 2) Classify — piped > title > scrollback > idle.
+            let prev = state.tracked.get(&id);
             let mut status = piped.map(|p| p.status).unwrap_or(Status::Unknown);
             let mut via = if piped.is_some() { "pipe" } else { "infer" };
+            // The tool name from the piped payload is stored on the record in
+            // handle_pipe_payload; preserve it while a piped status is active.
+            let tool = if piped.is_some() {
+                prev.and_then(|p| p.tool.clone())
+            } else {
+                None
+            };
 
             if status == Status::Unknown {
                 if let Some(s) = best_classify(&detectors, &info.title, &cmd, scrollback_lines, id) {
@@ -56,6 +65,13 @@ pub fn detect_all(state: &mut State) {
                 // We know it's an agent but can't read a signal right now.
                 status = Status::Idle;
             }
+
+            // Stamp a change-time when the inferred status flips (for elapsed).
+            let last_event_ts = match prev {
+                Some(p) if p.status == status => p.last_event_ts,
+                _ => now,
+            };
+            let last_ts_ms = prev.map(|p| p.last_ts_ms).unwrap_or(0);
 
             let short_name = agent::display_name(&info.title, id);
             next.insert(
@@ -69,6 +85,9 @@ pub fn detect_all(state: &mut State) {
                     status,
                     short_name,
                     via,
+                    tool,
+                    last_event_ts,
+                    last_ts_ms,
                 },
             );
         }

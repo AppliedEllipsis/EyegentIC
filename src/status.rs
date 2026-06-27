@@ -97,6 +97,36 @@ impl Status {
     }
 }
 
+/// Per-tool glyph for the richer piped payload. When an agent's hook pipes a
+/// `tool` name alongside a `working` status, the bar shows this glyph instead
+/// of the generic ⏳, so you can see *what* the agent is doing at a glance.
+/// Unknown tools fall back to a generic gear. Names are matched loosely
+/// (substring, lowercase) so any agent's hook can use them.
+pub fn tool_icon(tool: &str) -> &'static str {
+    let t = tool.to_lowercase();
+    if t.contains("bash") || t.contains("shell") || t.contains("exec") || t == "sh" {
+        "⚡"
+    } else if t.contains("read") || t.contains("glob") || t.contains("grep")
+        || t.contains("search") || t.contains("list")
+    {
+        "◉"
+    } else if t.contains("edit") || t.contains("write") || t.contains("create")
+        || t.contains("patch")
+    {
+        "✎"
+    } else if t.contains("web") || t.contains("fetch") || t.contains("url")
+        || t.contains("http")
+    {
+        "◈"
+    } else if t.contains("task") || t.contains("subagent") || t.contains("agent")
+        || t.contains("spawn")
+    {
+        "⊜"
+    } else {
+        "⚙"
+    }
+}
+
 /// The set of icon glyphs eyegentic itself prefixes onto names, so we can tell
 /// our own prefixes apart from an agent's title (e.g. pi's braille spinner).
 pub const OUR_ICONS: &[&str] = &["❔", "⏸", "✅", "⏳", "❌", "❗"];
