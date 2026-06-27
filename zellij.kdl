@@ -7,14 +7,25 @@
 // gives you a normal shell pane below to launch `pi` in.
 
 layout {
-    pane size=1 borderless=true {
-        plugin location="file:eyegentic.wasm" {
-            poll_interval "1.0"
-            status_bar "true"
-            rename_tabs "true"
-            rename_panes "true"
-            pane_tint "false"
+    default_tab_template {
+        pane size=1 borderless=true {
+            plugin location="zellij:tab-bar"
+        }
+        children
+        pane size=2 borderless=true {
+            plugin location="zellij:status-bar"
         }
     }
-    pane
+    tab name="eyegentic" {
+        pane size=1 borderless=true {
+            plugin location="file:eyegentic.wasm" {
+                poll_interval "1.0"
+                status_bar "true"
+                rename_tabs "true"
+                rename_panes "true"
+                pane_tint "false"
+            }
+        }
+        pane
+    }
 }
