@@ -10,8 +10,11 @@ repository = "https://github.com/AppliedEllipsis/EyegentIC"
 keywords = ["zellij", "plugin", "agent", "status", "monitor"]
 categories = ["development-tools"]
 
-[lib]
-crate-type = ["cdylib"]
+# zellij plugins are WASI *command* modules: the `register_plugin!` macro
+# emits `fn main()` so the toolchain produces a `_start` entry point, which
+# zellij calls to initialize the plugin before `load`. A `cdylib` has no entry
+# point, so `_start` is never emitted and zellij fails with "could not find
+# exported function". Keep this as a bin crate (src/main.rs, no [lib]).
 
 # zellij 0.44.x ships zellij-tile 0.44.3. Keep these in sync with the
 # zellij binary that will load the resulting .wasm.
