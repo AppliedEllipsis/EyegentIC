@@ -44,6 +44,9 @@ pub struct Config {
     /// On first load (after permissions), auto-install a pi extension that
     /// pipes agent state into eyegentic. Idempotent + version-tagged.
     pub auto_install_hook: bool,
+    /// Append timestamped debug lines to `/host/eyegentic.log` (the folder you
+    /// ran `zellij -l` in). Watch with `tail -f eyegentic.log`.
+    pub debug: bool,
 }
 
 impl Default for Config {
@@ -61,6 +64,7 @@ impl Default for Config {
             flash: FlashMode::Brief,
             elapsed_time: true,
             auto_install_hook: true,
+            debug: false,
         }
     }
 }
@@ -125,6 +129,9 @@ impl Config {
         }
         if let Some(v) = c.get("auto_install_hook") {
             cfg.auto_install_hook = parse_bool(v);
+        }
+        if let Some(v) = c.get("debug") {
+            cfg.debug = parse_bool(v);
         }
 
         cfg

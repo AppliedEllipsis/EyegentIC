@@ -24,6 +24,8 @@ const SEP: Color = (96, 96, 120);
 const SUM: Color = (120, 120, 135);
 const FLASH_FG: Color = (255, 255, 80);
 const FLASH_BG: Color = (80, 80, 30);
+const WARN_FG: Color = (20, 20, 30);
+const WARN_BG: Color = (255, 205, 0);
 
 /// Build the one-line status bar (and populate `state.click_regions`).
 pub fn render_bar(state: &mut State, _rows: usize, cols: usize) -> String {
@@ -100,6 +102,26 @@ fn render_agents(state: &mut State, buf: &mut String, col: &mut usize, cols: usi
         let _ = write!(buf, "  {}", color("no agents detected", SUM));
         *col += 2 + char_width("no agents detected");
         return;
+    }
+
+    // Prominent warning when one or more agents are blocked on you.
+    let waiting: Vec<&str> = agents
+        .iter()
+        .filter(|a| a.status == Status::NeedsInput)
+        .map(|a| a.short_name.as_str())
+        .collect();
+    if !waiting.is_empty() {
+        let names = waiting.join(", ");
+        let warn = if waiting.len() == 1 {
+            format!(" \u{26a0} {names} is asking a question ")
+        } else {
+            format!(" \u{26a0} {} agents need input: {names} ", waiting.len())
+        };
+        let w = char_width(&warn);
+        if *col + w + 2 <= cols {
+            let _ = write!(buf, "  {}{}{BOLD}{warn}{RESET}", bg(WARN_BG), fg(WARN_FG));
+            *col += w + 2;
+        }
     }
 
     let mut first = true;

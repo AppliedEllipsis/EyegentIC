@@ -22,6 +22,8 @@ mod config;
 mod detect;
 mod indicators;
 mod installer;
+#[macro_use]
+mod log;
 mod render;
 mod settings;
 mod state;
@@ -40,9 +42,16 @@ impl ZellijPlugin for State {
     fn load(&mut self, configuration: BTreeMap<String, String>) {
         self.config = config::Config::from_configuration(&configuration);
         self.settings = Settings::from_config(&self.config);
+        log::set_enabled(self.config.debug);
+        logln!("load: debug logging on (poll={}s)", self.config.poll_interval);
 
-        // A status bar shouldn't steal focus.
-        set_selectable(false);
+        // NOTE: we deliberately do NOT call set_selectable(false) here. On
+        // first run zellij shows its permission-approval prompt inside the
+        // plugin's own pane and needs a keypress (`y`) to grant. If we hide
+        // the pane up front it can never be focused to answer that prompt, so
+        // permissions stay pending forever and tick() early-returns on every
+        // timer. We pin the bar back to non-selectable in the Granted handler
+        // once approval has come through.
 
         // Ask for everything up front. RunCommands + ReadCliPipes +
         // MessageAndLaunchOtherPlugins power the auto-installed hook, the
@@ -131,6 +140,18 @@ impl ZellijPlugin for State {
                 }
             }
             Event::Timer(_) => {
+                // Surface the pending-permission stall in the log instead of
+                // looking like a "blank"/frozen log. Logged sparsely so it
+                // doesn't spam at the poll interval.
+                if !self.permissions_granted
+                    && !self.permissions_denied
+                    && self.tick % 5 == 0
+                {
+                    crate::logln!(
+                        "perm: still pending after {} ticks — approve the prompt in eyegentic's pane (press y); the bar pins itself back afterwards",
+                        self.tick
+                    );
+                }
                 self.tick();
                 let _ = self.cleanup_expired_flashes();
                 if self.has_active_flashes() {

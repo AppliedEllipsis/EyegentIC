@@ -123,6 +123,12 @@ zellij -l zellij.kdl            # status bar on top, a shell below
 In the shell pane, launch an agent (`pi`) and watch its icon update as it
 works and finishes.
 
+> **First run frozen?** If the status bar never updates (and `eyegentic.log`
+> stops at the `load:` line), zellij is waiting on a permission prompt it
+> can't show in a 1-row pane. `build.sh` seeds the permission cache for you;
+> if you skipped it, run `scripts/seed-permissions.sh` then restart the
+> session. See [Permissions](#permissions) for the why.
+
 ## Install permanently
 
 The easiest way is to point your layout at a [release](https://github.com/AppliedEllipsis/EyegentIC/releases)
@@ -234,6 +240,32 @@ On first load, eyegentic requests:
 
 Grant them when zellij prompts. If denied, the status bar explains what's
 missing.
+
+### First-run prompt can't be answered in a 1-row pane
+
+eyegentic is designed to live in a 1-row borderless status pane. zellij's
+permission-approval prompt renders *inside the plugin's own pane* and needs a
+multi-line `y`/`n` keypress — which a 1-row pane can't display or focus
+(zellij bug [zellij-org/zellij#4749](https://github.com/zellij-org/zellij/issues/4749)).
+With the prompt unanswerable, zellij never delivers `Timer`/`PaneUpdate`
+events, so the plugin loads and then sits frozen: no status bar, and the pi
+hook never auto-installs.
+
+`build.sh` works around this automatically by pre-seeding zellij's permission
+cache (the documented fix — zellij grants from cache before it tries to show
+the prompt). To run it by hand, or after pointing your layout at a different
+`.wasm`:
+
+```bash
+scripts/seed-permissions.sh                       # uses ./eyegentic.wasm
+WASM=/path/to/eyegentic.wasm scripts/seed-permissions.sh
+```
+
+It writes `<zellij-cache-dir>/permissions.kdl` (Linux `~/.cache/zellij`, macOS
+`~/Library/Caches/org.Zellij-Contributors.Zellij`, Windows
+`%LOCALAPPDATA%\Zellij\cache`), is idempotent, and never clobbers existing
+entries. **Restart the zellij session** after seeding to pick up the grant.
+Disable the build-time seeding with `SEED_PERMISSIONS=0 ./build.sh`.
 
 ## Architecture
 

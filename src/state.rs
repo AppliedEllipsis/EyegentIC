@@ -248,6 +248,12 @@ impl State {
             }
         }
 
+        crate::logln!(
+            "pipe: pane {pid} status={:?} tool={:?} ts_ms={ts_ms}",
+            status,
+            tool
+        );
+
         self.piped.insert(
             pid,
             PipedStatus {

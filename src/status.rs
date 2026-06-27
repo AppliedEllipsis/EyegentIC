@@ -34,7 +34,7 @@ impl Status {
             Status::Ready => "✅",
             Status::Working => "⏳",
             Status::Error => "❌",
-            Status::NeedsInput => "❗",
+            Status::NeedsInput => "❓",
         }
     }
 
@@ -129,7 +129,7 @@ pub fn tool_icon(tool: &str) -> &'static str {
 
 /// The set of icon glyphs eyegentic itself prefixes onto names, so we can tell
 /// our own prefixes apart from an agent's title (e.g. pi's braille spinner).
-pub const OUR_ICONS: &[&str] = &["❔", "⏸", "✅", "⏳", "❌", "❗"];
+pub const OUR_ICONS: &[&str] = &["❔", "⏸", "✅", "⏳", "❌", "❓", "❗"];
 
 /// If `name` begins with one of our own icon prefixes (plus a space), return
 /// the name with that prefix stripped. Otherwise return `name` unchanged.

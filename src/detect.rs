@@ -69,7 +69,15 @@ pub fn detect_all(state: &mut State) {
             // Stamp a change-time when the inferred status flips (for elapsed).
             let last_event_ts = match prev {
                 Some(p) if p.status == status => p.last_event_ts,
-                _ => now,
+                _ => {
+                    let from = prev.map(|p| p.status).unwrap_or(crate::status::Status::Unknown);
+                    crate::logln!(
+                        "detect: pane {id} {:?} -> {:?} (via {via})",
+                        from,
+                        status
+                    );
+                    now
+                }
             };
             let last_ts_ms = prev.map(|p| p.last_ts_ms).unwrap_or(0);
 
@@ -93,7 +101,11 @@ pub fn detect_all(state: &mut State) {
         }
     }
 
+    let agents = next.len();
     state.tracked = next;
+    if agents > 0 || state.tick % 10 == 0 {
+        crate::logln!("detect: scan #{} tracked {agents} agent pane(s)", state.tick);
+    }
 }
 
 /// Run each detector's classifier, backed by a scrollback read, returning the

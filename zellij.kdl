@@ -11,12 +11,9 @@ layout {
         pane size=1 borderless=true {
             plugin location="zellij:tab-bar"
         }
-        children
-        pane size=2 borderless=true {
-            plugin location="zellij:status-bar"
-        }
-    }
-    tab name="eyegentic" {
+        // eyegentic lives in the template so EVERY tab (including new ones
+        // you open with Ctrl Shift t then n) gets the agent-status bar,
+        // pinned right under the tab strip.
         pane size=1 borderless=true {
             plugin location="file:eyegentic.wasm" {
                 poll_interval "1.0"
@@ -24,8 +21,15 @@ layout {
                 rename_tabs "true"
                 rename_panes "true"
                 pane_tint "false"
+                debug "true"
             }
         }
+        children
+        pane size=2 borderless=true {
+            plugin location="zellij:status-bar"
+        }
+    }
+    tab name="eyegentic" {
         pane
     }
 }
