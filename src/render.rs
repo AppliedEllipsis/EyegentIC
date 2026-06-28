@@ -124,6 +124,12 @@ fn render_agents(state: &mut State, buf: &mut String, col: &mut usize, cols: usi
         }
     }
 
+    // Add spacing between the mode pill/prefix and the first agent.
+    if *col + 2 <= cols {
+        let _ = write!(buf, "  ");
+        *col += 2;
+    }
+
     let mut first = true;
     for a in &agents {
         let seg = render_segment(a, now, threshold, show_elapsed, state);

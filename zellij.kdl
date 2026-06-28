@@ -22,6 +22,7 @@ layout {
                 rename_panes "true"
                 pane_tint "false"
                 debug "true"
+                probe "true"
             }
         }
         children

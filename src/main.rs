@@ -24,6 +24,7 @@ mod indicators;
 mod installer;
 #[macro_use]
 mod log;
+mod probe;
 mod render;
 mod settings;
 mod state;

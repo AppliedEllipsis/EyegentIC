@@ -170,6 +170,7 @@ impl State {
         if !self.permissions_granted {
             return;
         }
+        crate::probe::probe_all(self);
         crate::detect::detect_all(self);
         self.cleanup_stale_piped();
         crate::indicators::apply(self);

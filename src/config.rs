@@ -47,6 +47,11 @@ pub struct Config {
     /// Append timestamped debug lines to `/host/eyegentic.log` (the folder you
     /// ran `zellij -l` in). Watch with `tail -f eyegentic.log`.
     pub debug: bool,
+    /// Diagnostic spike: dump per-pane OS-query signals (pid / running command
+    /// / cwd) to the log so we can confirm which are available on this build
+    /// before refactoring detection around them. Requires `debug "true"` for
+    /// the log sink. Throwaway — see `src/probe.rs`.
+    pub probe: bool,
 }
 
 impl Default for Config {
@@ -65,6 +70,7 @@ impl Default for Config {
             elapsed_time: true,
             auto_install_hook: true,
             debug: false,
+            probe: false,
         }
     }
 }
@@ -132,6 +138,9 @@ impl Config {
         }
         if let Some(v) = c.get("debug") {
             cfg.debug = parse_bool(v);
+        }
+        if let Some(v) = c.get("probe") {
+            cfg.probe = parse_bool(v);
         }
 
         cfg

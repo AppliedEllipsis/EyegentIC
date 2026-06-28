@@ -66,9 +66,21 @@ export default function (pi: ExtensionAPI): void {
   pi.on("agent_start", async () => pipe("working"));
   pi.on("agent_end", async () => pipe("ready"));
 
-  pi.on("tool_call", async (event) => pipe("working", event.toolName));
+  pi.on("tool_call", async (event) => {
+    if (event.toolName === "ask_user_question") {
+      pipe("needs input", event.toolName);
+    } else {
+      pipe("working", event.toolName);
+    }
+  });
   pi.on("tool_execution_end", async (event) => {
-    if (event.isError) pipe("error", event.toolName);
-    else pipe("working", event.toolName);
+    if (event.toolName === "ask_user_question") {
+      // Question was answered — agent resumes working.
+      pipe("working", event.toolName);
+    } else if (event.isError) {
+      pipe("error", event.toolName);
+    } else {
+      pipe("working", event.toolName);
+    }
   });
 }
