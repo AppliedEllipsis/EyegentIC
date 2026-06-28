@@ -202,7 +202,7 @@ fn render_segment(
         let (r, g, b) = a.status.color_rgb();
         let _ = write!(s, "{}", fg((r, g, b)));
     }
-    let _ = write!(s, "{icon} {}", a.short_name);
+    let _ = write!(s, "{icon}  {}", a.short_name);
 
     // Elapsed-time suffix.
     if show_elapsed && a.status != Status::Idle && a.status != Status::Unknown {

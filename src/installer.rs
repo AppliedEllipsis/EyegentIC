@@ -13,7 +13,16 @@
 
 use zellij_tile::prelude::run_command;
 
-const HOOK_VERSION_TAG: &str = concat!("// eyegentic v", env!("CARGO_PKG_VERSION"));
+// Version tag includes a content fingerprint so any change to the hook script
+// automatically produces a different tag, triggering re-install even when the
+// package version hasn't changed. The fingerprint is computed by build.rs.
+const HOOK_VERSION_TAG: &str = concat!(
+    "// eyegentic v",
+    env!("CARGO_PKG_VERSION"),
+    " [",
+    env!("HOOK_FINGERPRINT"),
+    "]",
+);
 
 fn hook_script_content() -> String {
     let original = include_str!("../scripts/eyegentic-hook.ts");

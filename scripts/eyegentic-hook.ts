@@ -47,7 +47,18 @@ function pipe(status: string, tool?: string): void {
       stdio: "ignore",
       windowsHide: true,
     });
-    child.on("error", () => {});
+    // Kill the child if it hasn't exited within 5 seconds.
+    // On Windows, zellij pipe processes can occasionally hang when
+    // zellij is busy (plugin reloads, rapid pipe bursts), and
+    // accumulated zombies can interfere with pi's responsiveness.
+    const killTimer = setTimeout(() => {
+      try { child.kill(); } catch { /* already dead */ }
+    }, 5000);
+    child.on("exit", () => clearTimeout(killTimer));
+    child.on("error", () => {
+      clearTimeout(killTimer);
+      try { child.kill(); } catch { /* already dead */ }
+    });
     child.unref();
   } catch {
     // Never let telemetry break the agent.

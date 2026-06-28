@@ -85,10 +85,13 @@ fn rename_tabs(state: &mut State) {
         let desired = if chosen == Status::Unknown {
             original
         } else {
-            format!("{} {}", chosen.icon(), original)
+            format!("{}  {}", chosen.icon(), original)
         };
 
-        rename_tab(tab.position as u32, desired);
+        // `rename_tab` is 1-based (index 0 is treated as 1); `tab.position`
+        // is 0-based, so we must add 1 — otherwise position 1 (the second
+        // tab) collides with the first tab and never gets its own icon.
+        rename_tab(tab.position as u32 + 1, desired);
         state.tab_last_icon.insert(tab.tab_id, chosen);
     }
 }
@@ -118,7 +121,7 @@ fn rename_panes(state: &mut State) {
         } else {
             original
         };
-        let desired = format!("{} {}", status.icon(), original);
+        let desired = format!("{}  {}", status.icon(), original);
         rename_terminal_pane(id, desired);
         state.pane_last_icon.insert(id, status);
     }

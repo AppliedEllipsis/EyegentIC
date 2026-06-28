@@ -289,16 +289,25 @@ impl State {
         true
     }
 
-    /// Demote a stale piped Working status to Idle so inference can take over
-    /// again (e.g. an agent whose hook stopped reporting).
+    /// Demote a stale piped status so inference can take over again.
+    /// Working and NeedsInput are both demoted after their own thresholds,
+    /// because a dropped transition (e.g. hook pipe race) would otherwise
+    /// pin the stale status forever — especially NeedsInput, which keeps
+    /// the highest-attention ⚠ flash active and the ❗ icon visible.
     fn cleanup_stale_piped(&mut self) {
         let now = unix_now();
-        let stale_after = self.config.working_stale_secs;
+        let working_stale_secs = self.config.working_stale_secs;
+        // NeedsInput gets a shorter leash: if it's been over 2 minutes since
+        // a question was asked with no follow-up, it's almost certainly stale.
+        let needs_input_stale_secs = 120;
         let to_clear: Vec<u32> = self
             .piped
             .iter()
             .filter_map(|(id, p)| {
-                if p.status == Status::Working && now.saturating_sub(p.ts_secs) >= stale_after {
+                let age = now.saturating_sub(p.ts_secs);
+                if (p.status == Status::Working && age >= working_stale_secs)
+                    || (p.status == Status::NeedsInput && age >= needs_input_stale_secs)
+                {
                     Some(*id)
                 } else {
                     None

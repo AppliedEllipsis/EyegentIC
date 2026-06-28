@@ -105,6 +105,13 @@ fn strip_status_word(lower: &str) -> &str {
 }
 
 /// Classify from the pane's visible viewport text (ANSI already stripped).
+///
+/// Two regions of the viewport tail are used with different standards:
+/// - The bottom 3 lines ("prompt") are highly current; question-pattern
+///   matches there are trusted immediately.
+/// - The broader tail is used for error/working/ready signals that are safe
+///   even when stale (errors, spinners) — but NOT for NeedsInput, which would
+///   false-positive on dismissed-question text still visible in scrollback.
 pub fn classify_scrollback(viewport: &[String], lines_to_inspect: usize) -> Option<Status> {
     // Work from the bottom up; agents put their status at the prompt line.
     let tail: Vec<&String> = viewport.iter().rev().take(lines_to_inspect).collect();
@@ -119,13 +126,21 @@ pub fn classify_scrollback(viewport: &[String], lines_to_inspect: usize) -> Opti
         .join(" ");
     let lower = joined.to_lowercase();
 
-    // Highest-priority: an explicit question / options prompt.
-    if lower.contains("do you want to proceed")
-        || lower.contains("do you want to")
-        || lower.contains("type something")
-        || lower.contains("chat about this")
-        || lower.contains("ask_user")
-        || has_numbered_options(&lower)
+    // Prompt region (last 3 lines): the only place where NeedsInput patterns
+    // are trusted. Checking the full tail against "chat about this"/"type
+    // something"/numbered-options would catch stale dismissed-question text
+    // that's still visible in pi's scrollback but no longer active.
+    let prompt: Vec<&String> = tail.iter().take(3).copied().collect();
+    let prompt_joined: String =
+        prompt.iter().map(|s| s.as_str()).collect::<Vec<_>>().join(" ");
+    let prompt_lower = prompt_joined.to_lowercase();
+
+    if prompt_lower.contains("do you want to proceed")
+        || prompt_lower.contains("do you want to")
+        || prompt_lower.contains("type something")
+        || prompt_lower.contains("chat about this")
+        || prompt_lower.contains("ask_user")
+        || has_numbered_options(&prompt_lower)
     {
         return Some(Status::NeedsInput);
     }
