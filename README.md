@@ -188,7 +188,7 @@ All keys are optional (defaults shown):
 | `rename_tabs`        | `true`  | prefix tab names with the representative status icon |
 | `rename_panes`       | `true`  | prefix pane frame titles with the agent's icon     |
 | `pane_tint`          | `false` | tint each agent pane's default colors by state     |
-| `scrollback_lines`   | `14`    | trailing viewport lines to inspect                 |
+| `scrollback_lines`   | `14`    | trailing viewport lines to inspect *(currently unused)* |
 | `extra_agent_patterns` | `""`  | comma-separated extra command substrings to treat as agents |
 | `elapsed_threshold`  | `30`    | seconds before an elapsed-time suffix appears      |
 | `working_stale_secs` | `600`   | demote a stale piped `working` to idle after this  |
@@ -287,6 +287,8 @@ src/
   indicators.rs  apply tab/pane rename + pane tint
   render.rs      the status bar (flash, elapsed, click regions, settings menu)
   installer.rs   auto-install the pi hook extension
+  probe.rs       diagnostic: dumps OS-level pane signals (pid, cwd, argv)
+  log.rs         file-based debug logger (/host/eyegentic.log)
 scripts/
   eyegentic-hook.ts  the auto-installed pi extension (piped status source)
 ```
@@ -296,11 +298,27 @@ to `detectors()` in `src/agent/mod.rs`.
 
 ## Status
 
-Functional and in active daily use. The native terminal-title detector (v0.1.0+)
-recognizes pi panes with no hook or extension required. Scrollback and piped
-signals add precision for per-tool state and elapsed-time tracking. The detector
-is intentionally conservative (false negatives over false positives). Feedback
-and detector PRs welcome.
+Functional and in active daily use. A [full audit](AUDIT.md) (2026-06-28)
+found no critical bugs and confirmed performance is a non-issue at the plugin's
+scale (<20 panes, 1s poll).
+
+The native terminal-title detector (v0.1.0+) recognizes pi panes with no hook
+or extension required — it keys off pi's `π` glyph in the terminal title.
+Scrollback and piped signals add precision for per-tool state and elapsed-time
+tracking. The detector is intentionally conservative (false negatives over
+false positives).
+
+### Known limitations
+
+- **pi only.** No detectors exist yet for other coding agents (Cline, Codex,
+  Aider, etc.). The `AgentDetector` trait is ready for contributions — add a
+  struct in `src/agent/` and register it in `agent/mod.rs`.
+- **Pane exit not handled.** If an agent pane exits, it stays tracked as its
+  last-known status until the next manifest refresh. A future release will
+  use `PaneInfo.exited` to clean up dead panes.
+- **`scrollback_lines` has no effect.** Zellij's `get_pane_scrollback` returns
+  the full viewport; the config key is accepted but ignored. It will either be
+  implemented or removed in a future release.
 
 ## License
 
