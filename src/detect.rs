@@ -36,6 +36,7 @@ pub fn detect_all(state: &mut State) {
             let mut is_agent = piped.is_some();
             if !is_agent {
                 is_agent = detectors.iter().any(|d| d.matches_command(&cmd))
+                    || detectors.iter().any(|d| d.matches_title(&info.title))
                     || matches_extra(&cmd, extra)
                     || agent::classify_title(&info.title).is_some();
             }

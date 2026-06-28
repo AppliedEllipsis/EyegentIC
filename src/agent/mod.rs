@@ -23,6 +23,17 @@ pub trait AgentDetector: Send + Sync {
     /// Does this pane's running-command string look like this agent?
     fn matches_command(&self, command: &str) -> bool;
 
+    /// Does this pane's *terminal title* look like this agent's native title?
+    ///
+    /// This is the signal that catches an agent the user launched by typing
+    /// its name at a shell prompt (a normal terminal pane, not a zellij
+    /// *command* pane), where `terminal_command` is `None` and there is no
+    /// piped hook. Defaults to `false`; agents whose TUI sets a recognisable
+    /// title override it.
+    fn matches_title(&self, _title: &str) -> bool {
+        false
+    }
+
     /// Given the pane title and the (ANSI-stripped) viewport lines, classify
     /// the agent's state, or `None` if no signal is recognised.
     fn classify(&self, title: &str, viewport: &[String]) -> Option<Status>;
@@ -36,7 +47,7 @@ pub fn detectors() -> Vec<Box<dyn AgentDetector>> {
 // ----- shared heuristics used by every detector ---------------------------
 
 /// Braille spinner glyphs agents commonly use while "working".
-const SPINNER: &str = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏⠉⠑⠒⠓⠔⠕";
+pub(crate) const SPINNER: &str = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏⠉⠑⠒⠓⠔⠕";
 
 /// Classify from a terminal title alone.
 ///
