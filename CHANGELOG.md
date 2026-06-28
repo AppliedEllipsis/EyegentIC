@@ -5,7 +5,7 @@ All notable changes to **EyegentIC** are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.1.1] — 2026-06-28
 
 ### Fixed
 - **Second tab never got an icon.** `rename_tab` is 1-based (index `0` is
@@ -88,5 +88,7 @@ coding-agent panes and shows, at a glance, which agent is **working**,
 - Permissions requested: `ReadApplicationState`, `ReadPaneContents`,
   `ChangeApplicationState`, `RunCommands`, `ReadCliPipes`,
   `MessageAndLaunchOtherPlugins`.
+
+[0.1.1]: https://github.com/AppliedEllipsis/EyegentIC/releases/tag/v0.1.1
 
 [0.1.0]: https://github.com/AppliedEllipsis/EyegentIC/releases/tag/v0.1.0
