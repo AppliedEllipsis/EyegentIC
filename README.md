@@ -52,9 +52,11 @@ Each tracked agent pane is classified into one of:
 
 These appear as, in priority order:
 
-1. **a status bar** in the plugin pane — `eyegentic  ❗ web · ⏳ api · ✅ docs   3 agents · 1 working · 1 need input · 0 error` — with optional **elapsed-time** suffixes (`⏳ api 45s`) to spot stuck agents and a **yellow flash** when an agent starts needing input.
-2. **icons prefixed onto tab names** — each tab is prefixed with the icon of
-   its most attention-worthy agent (`❗ api`).
+1. **a status bar** in the plugin pane — `eyegentic  ❗  web · ⏳  api · ✅  docs   3 agents · 1 working · 1 need input · 0 error` — with optional **elapsed-time** suffixes (`⏳  api 45s`) to spot stuck agents and a **yellow flash** when an agent starts needing input.
+2. **icons prefixed onto tab names** — each tab (including ones you open
+   after the plugin loaded) is prefixed with the icon of its most
+   attention-worthy agent (`❗  api`). Tracking is global, so every tab gets
+   its own icon, not just the first.
 3. **icons prefixed onto pane frame titles**.
 4. *(experimental)* **pane default-color tint** by state.
 

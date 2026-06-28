@@ -5,6 +5,19 @@ All notable changes to **EyegentIC** are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- **Second tab never got an icon.** `rename_tab` is 1-based (index `0` is
+  treated as `1`) but the code passed the 0-based `tab.position` directly, so
+  the second tab's rename collided with the first and was silently dropped.\  Now `tab.position + 1` is passed, mirroring `switch_tab_to`. Every tab —
+  including ones opened after the plugin loaded — gets its own representative
+  icon.
+- **Icon crowding the title.** Status glyphs are double-width emoji, so a
+  single space between icon and name read as cramped. Bumped to two spaces in
+  the tab-name prefix, the pane-frame prefix, and the status-bar segment for a
+  consistent gap everywhere.
+
 ## [0.1.0] — 2025-06-27
 
 First public release.
