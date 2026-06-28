@@ -55,12 +55,100 @@ impl AgentDetector for PiDetector {
         }
     }
 
+    fn fingerprint(&self, viewport: &[String]) -> bool {
+        pi_fingerprint_score(viewport) >= 2
+    }
+
     fn classify(&self, title: &str, viewport: &[String]) -> Option<Status> {
         if let Some(s) = classify_title(title) {
             return Some(s);
         }
         classify_scrollback(viewport, 14)
     }
+}
+
+/// Score how strongly a viewport looks like pi's TUI. We require multiple
+/// independent signals (see [`PiDetector::fingerprint`]) so a bare shell with
+/// a starship `❯` prompt — which shares only the weakest single marker — can
+/// never be mistaken for pi.
+///
+/// pi's footer renders two always-present lines regardless of agent state:
+///   `<cwd> (<branch>)`
+///   `↑6.3M ↓38k 12.7%/640k (auto)            (provider) <model> • <thinking>`
+/// The token/context counter (`↑… ↓… N.N%/NNNk`) and the `model • thinking`
+/// separator are highly pi-specific; the `❯` prompt and `Working…`/spinner are
+/// supporting signals.
+fn pi_fingerprint_score(viewport: &[String]) -> usize {
+    if viewport.is_empty() {
+        return 0;
+    }
+    // Inspect a generous tail — pi's footer sits at the bottom, but a tall
+    // pane may push it up a few rows above a trailing blank line.
+    let tail: Vec<&str> = viewport
+        .iter()
+        .rev()
+        .take(24)
+        .map(|s| s.as_str())
+        .collect();
+    let joined: String = tail.join("\n");
+    let lower = joined.to_lowercase();
+
+    let mut score = 0usize;
+
+    // 1) Token-counter footer: an up-arrow and down-arrow on the same region
+    //    plus a `NN%/` context-usage figure. Very pi-specific.
+    let has_arrows = joined.contains('\u{2191}') && joined.contains('\u{2193}'); // ↑ ↓
+    let has_ctx_pct = has_context_percent(&joined);
+    if has_arrows && has_ctx_pct {
+        score += 2; // strong enough on its own to pass the >= 2 gate
+    } else if has_arrows || has_ctx_pct {
+        score += 1;
+    }
+
+    // 2) The `(auto)` / `(sub)` cost indicator pi prints after the counters.
+    if joined.contains("(auto)") || joined.contains("(sub)") {
+        score += 1;
+    }
+
+    // 3) The model line's ` • ` separator between model name and thinking level.
+    if joined.contains(" \u{2022} ") {
+        score += 1;
+    }
+
+    // 4) Active-work markers: spinner glyph or pi's "working"/interrupt hints.
+    if lower.contains("working\u{2026}")
+        || lower.contains("working...")
+        || lower.contains("to interrupt")
+        || lower.contains("esc to interrupt")
+        || tail.iter().any(|l| l.chars().any(|c| SPINNER.contains(c)))
+    {
+        score += 1;
+    }
+
+    // 5) The `❯` prompt glyph — weakest signal (starship uses it too), so it
+    //    only ever contributes one point and never passes the gate alone.
+    if joined.contains('\u{276f}') {
+        score += 1;
+    }
+
+    score
+}
+
+/// Detect pi's context-usage figure: a `NN.N%/` or `NN%/` run (e.g.
+/// `12.7%/640k`). We look for a `%` immediately followed by `/`, preceded by a
+/// digit — distinctive enough to avoid matching prose percentages.
+fn has_context_percent(s: &str) -> bool {
+    let bytes = s.as_bytes();
+    for i in 0..bytes.len() {
+        if bytes[i] == b'%' {
+            let prev_digit = i > 0 && bytes[i - 1].is_ascii_digit();
+            let next_slash = i + 1 < bytes.len() && bytes[i + 1] == b'/';
+            if prev_digit && next_slash {
+                return true;
+            }
+        }
+    }
+    false
 }
 
 #[cfg(test)]

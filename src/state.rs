@@ -128,6 +128,11 @@ pub struct State {
     /// pane_id -> flash deadline (ms). `u64::MAX` means "persist".
     pub flash_deadlines: BTreeMap<u32, u64>,
 
+    /// pane_id -> (tick when last fingerprinted, was-pi result). Lets us
+    /// throttle the per-pane viewport read used for scrollback detection so we
+    /// don't pay a host call for every untracked pane on every scan.
+    pub fingerprint_cache: BTreeMap<u32, (u64, bool)>,
+
     pub input_mode: InputMode,
     pub zellij_session_name: Option<String>,
     pub view_mode: ViewMode,

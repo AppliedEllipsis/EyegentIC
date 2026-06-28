@@ -25,29 +25,82 @@ pub fn detect_all(state: &mut State) {
     for (tab_position, panes) in &manifest.panes {
         for info in panes {
             // We only care about terminal panes (where agents live).
+            // Diagnostic: dump what we actually see for EVERY pane (incl.
+            // plugins), so we can tell whether pi's title/command reach us and
+            // how panes are flagged. Sparse (every 10 scans) to avoid spamming.
+            if state.tick % 10 == 0 {
+                crate::logln!(
+                    "  pane {}: title={:?} cmd={:?} is_plugin={}",
+                    info.id,
+                    info.title,
+                    info.terminal_command,
+                    info.is_plugin
+                );
+            }
+
+            // We only care about terminal panes (where agents live).
             if info.is_plugin {
                 continue;
             }
             let id = info.id;
             let cmd = info.terminal_command.clone().unwrap_or_default();
 
-            // 1) Is this pane an agent?
+            // 1) Is this pane an agent? Cheap signals first (no host call):
+            //    piped status, running command, native title, extra patterns.
             let piped = state.piped.get(&id).copied();
-            let mut is_agent = piped.is_some();
+            let mut is_agent = piped.is_some()
+                || detectors.iter().any(|d| d.matches_command(&cmd))
+                || detectors.iter().any(|d| d.matches_title(&info.title))
+                || matches_extra_any(&cmd, &info.title, extra)
+                || agent::classify_title(&info.title).is_some();
+
+            // 2) Read the viewport once (host call) — needed for scrollback
+            //    *detection* (fingerprint) and/or *classification*. We only
+            //    pay for it when a pane is either already an agent (to classify
+            //    it) or still a detection candidate we should fingerprint.
+            //    Fingerprinting is throttled per-pane via the cache so an
+            //    untracked shell isn't re-read on every single scan.
+            let mut viewport: Option<Vec<String>> = None;
+            let mut fp_via_scrollback = false;
             if !is_agent {
-                is_agent = detectors.iter().any(|d| d.matches_command(&cmd))
-                    || detectors.iter().any(|d| d.matches_title(&info.title))
-                    || matches_extra(&cmd, extra)
-                    || agent::classify_title(&info.title).is_some();
+                let due = match state.fingerprint_cache.get(&id) {
+                    Some((last, was_pi)) => {
+                        // Re-check sooner if it looked like pi last time.
+                        let gap = if *was_pi { FP_GAP_HIT } else { FP_GAP_MISS };
+                        state.tick.wrapping_sub(*last) >= gap
+                    }
+                    None => true,
+                };
+                if due {
+                    let vp = read_viewport(id);
+                    let is_pi = !vp.is_empty()
+                        && detectors.iter().any(|d| d.fingerprint(&vp));
+                    state.fingerprint_cache.insert(id, (state.tick, is_pi));
+                    if is_pi {
+                        is_agent = true;
+                        fp_via_scrollback = true;
+                    }
+                    viewport = Some(vp);
+                } else if matches!(state.fingerprint_cache.get(&id), Some((_, true))) {
+                    // Cached as pi within the throttle window — trust it.
+                    is_agent = true;
+                    fp_via_scrollback = true;
+                }
             }
             if !is_agent {
                 continue;
             }
 
-            // 2) Classify — piped > title > scrollback > idle.
+            // 3) Classify — piped > title > scrollback > idle.
             let prev = state.tracked.get(&id);
             let mut status = piped.map(|p| p.status).unwrap_or(Status::Unknown);
-            let mut via = if piped.is_some() { "pipe" } else { "infer" };
+            let mut via = if piped.is_some() {
+                "pipe"
+            } else if fp_via_scrollback {
+                "scrollback"
+            } else {
+                "infer"
+            };
             // The tool name from the piped payload is stored on the record in
             // handle_pipe_payload; preserve it while a piped status is active.
             let tool = if piped.is_some() {
@@ -57,7 +110,9 @@ pub fn detect_all(state: &mut State) {
             };
 
             if status == Status::Unknown {
-                if let Some(s) = best_classify(&detectors, &info.title, &cmd, scrollback_lines, id) {
+                if let Some(s) =
+                    best_classify(&detectors, &info.title, &cmd, scrollback_lines, id, viewport)
+                {
                     status = s;
                     via = "infer";
                 }
@@ -109,14 +164,34 @@ pub fn detect_all(state: &mut State) {
     }
 }
 
-/// Run each detector's classifier, backed by a scrollback read, returning the
-/// first non-`None` status. Reads scrollback at most once per call.
+/// Per-pane fingerprint re-check cadence, in scans. A pane that looked like
+/// pi last time is re-checked sooner (it may have changed state) than one that
+/// didn't (cheap to keep ignoring a plain shell).
+const FP_GAP_HIT: u64 = 3;
+const FP_GAP_MISS: u64 = 10;
+
+/// Read a pane's viewport (ANSI stripped). Returns an empty vec on error.
+fn read_viewport(pane_id: u32) -> Vec<String> {
+    match get_pane_scrollback(PaneId::Terminal(pane_id), false) {
+        Ok(contents) => contents
+            .viewport
+            .into_iter()
+            .map(|line| agent::strip_ansi(&line))
+            .collect::<Vec<_>>(),
+        Err(_) => Vec::new(),
+    }
+}
+
+/// Run each detector's classifier, returning the first non-`None` status.
+/// Tries the title first (cheap), then the viewport. If the caller already
+/// read the viewport (for fingerprinting), it's reused instead of re-read.
 fn best_classify(
     detectors: &[Box<dyn AgentDetector>],
     title: &str,
     _cmd: &str,
     scrollback_lines: usize,
     pane_id: u32,
+    viewport: Option<Vec<String>>,
 ) -> Option<Status> {
     // Try title-only first (cheap, no host call).
     for d in detectors {
@@ -125,15 +200,14 @@ fn best_classify(
         }
     }
 
-    // Fall back to reading the pane's viewport.
-    let viewport = match get_pane_scrollback(PaneId::Terminal(pane_id), false) {
-        Ok(contents) => contents
-            .viewport
-            .into_iter()
-            .map(|line| agent::strip_ansi(&line))
-            .collect::<Vec<_>>(),
-        Err(_) => return None,
+    // Reuse a pre-read viewport, or read one now.
+    let viewport = match viewport {
+        Some(vp) => vp,
+        None => read_viewport(pane_id),
     };
+    if viewport.is_empty() {
+        return None;
+    }
 
     for d in detectors {
         if let Some(s) = d.classify(title, &viewport) {
@@ -144,10 +218,14 @@ fn best_classify(
     None
 }
 
-fn matches_extra(command: &str, extra: &[String]) -> bool {
-    if command.is_empty() || extra.is_empty() {
+/// True if any extra user pattern matches either the command or the title.
+fn matches_extra_any(command: &str, title: &str, extra: &[String]) -> bool {
+    if extra.is_empty() {
         return false;
     }
     let c = command.to_lowercase();
-    extra.iter().any(|pat| c.contains(pat))
+    let t = title.to_lowercase();
+    extra
+        .iter()
+        .any(|pat| (!c.is_empty() && c.contains(pat)) || (!t.is_empty() && t.contains(pat)))
 }

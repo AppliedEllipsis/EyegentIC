@@ -6,9 +6,9 @@
 
 **Keep an eye on your coding agents — pane status at a glance.** 👁️
 
-> ⚠️ **Status: unstable / paused.** This project is currently in an unstable
-> state and active development is paused for now. Things may be broken or
-> incomplete — use at your own risk.
+> ✅ **Status: functional.** The plugin detects pi coding-agent panes via
+> native terminal title detection, piped hook events, and scrollback analysis.
+> Built for daily use.
 
 A [zellij](https://zellij.dev) plugin that shows your coding-agent panes'
 status **at a glance** — *the eye, see,* in agent**ic**.
@@ -296,9 +296,11 @@ to `detectors()` in `src/agent/mod.rs`.
 
 ## Status
 
-Early scaffold — detection heuristics are tunable guesses and will be refined
-against real agent output. The scrollback parser is intentionally conservative
-(false negatives over false positives). Feedback and detector PRs welcome.
+Functional and in active daily use. The native terminal-title detector (v0.1.0+)
+recognizes pi panes with no hook or extension required. Scrollback and piped
+signals add precision for per-tool state and elapsed-time tracking. The detector
+is intentionally conservative (false negatives over false positives). Feedback
+and detector PRs welcome.
 
 ## License
 

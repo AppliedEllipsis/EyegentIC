@@ -34,6 +34,20 @@ pub trait AgentDetector: Send + Sync {
         false
     }
 
+    /// Does this pane's *viewport* (ANSI-stripped visible text) carry this
+    /// agent's TUI fingerprint? This is the detection signal of last resort —
+    /// it works when there is no piped hook, no recognisable command (the user
+    /// typed the agent's name at a shell prompt), and no propagated title
+    /// (e.g. pi's `π` OSC title doesn't reach zellij on Windows).
+    ///
+    /// Unlike [`AgentDetector::classify`], which reads a *state* from a pane
+    /// already known to be an agent, this answers "is this an agent at all?".
+    /// Implementations must be conservative: a false positive tracks a
+    /// non-agent pane forever. Defaults to `false`.
+    fn fingerprint(&self, _viewport: &[String]) -> bool {
+        false
+    }
+
     /// Given the pane title and the (ANSI-stripped) viewport lines, classify
     /// the agent's state, or `None` if no signal is recognised.
     fn classify(&self, title: &str, viewport: &[String]) -> Option<Status>;
